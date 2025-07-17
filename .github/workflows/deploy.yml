@@ -44,6 +44,7 @@ jobs:
 
     - name: Run tests and build binary
       run: |
+        go mod tidy
         go get github.com/stretchr/testify
         go test ./...
         mkdir -p ./bin

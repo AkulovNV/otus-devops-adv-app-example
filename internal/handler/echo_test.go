@@ -1,5 +1,4 @@
 package handler
-package handler
 
 import (
 	"bytes"
