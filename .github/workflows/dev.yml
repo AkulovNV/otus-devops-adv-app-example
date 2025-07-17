@@ -1,12 +1,12 @@
-name: Deploy Dev
+# name: Deploy Dev
 
-on:
-  push:
-    branches: [dev]
+# on:
+#   push:
+#     branches: [dev]
 
-jobs:
-  call-deploy:
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: dev
-    secrets: inherit
+# jobs:
+#   call-deploy:
+#     uses: ./.github/workflows/deploy.yml
+#     with:
+#       environment: dev
+#     secrets: inherit

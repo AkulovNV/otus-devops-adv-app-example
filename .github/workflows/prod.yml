@@ -1,12 +1,12 @@
-name: Deploy Prod
+# name: Deploy Prod
 
-on:
-  push:
-    branches: [main]
+# on:
+#   push:
+#     branches: [main]
 
-jobs:
-  call-deploy:
-    uses: ./.github/workflows/deploy.yml
-    with:
-      environment: prod
-    secrets: inherit
+# jobs:
+#   call-deploy:
+#     uses: ./.github/workflows/deploy.yml
+#     with:
+#       environment: prod
+#     secrets: inherit

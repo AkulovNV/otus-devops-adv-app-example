@@ -1,8 +1,7 @@
 package main
 
 import (
-	"echo-server/internal/handler"
-
+	"github.com/AkulovNV/otus-devops-adv-app-example/internal/handler"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,5 +15,5 @@ func main() {
 	r.POST("/echo", handler.Echo)
 	r.GET("/echo", handler.Echo)
 
-	r.Run(":8080") // запускаем на 8080
+	r.Run(":8080")
 }
