@@ -8,8 +8,16 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o app ./cmd/main.go
 
 FROM alpine:latest
-WORKDIR /root/
-COPY --from=builder /app/app .
+
+RUN adduser -D -u 10001 appuser
+
+WORKDIR /home/appuser
+
+COPY --from=builder /app/app ./app
+RUN chown appuser:appuser ./app && chmod +x ./app
+
+USER appuser
+
 EXPOSE 8080
 
 CMD ["./app"]
