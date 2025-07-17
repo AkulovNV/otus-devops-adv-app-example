@@ -1,0 +1,138 @@
+name: Deploy Service
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+      TELEGRAM_BOT_TOKEN:
+        required: true
+      TELEGRAM_CHAT_ID:
+        required: true
+      KUBE_CONFIG:
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set-tag.outputs.tag }}
+    env:
+      REGISTRY: docker.io
+      IMAGE_NAME: ${{ github.repository }}
+      CHART_DIR: ./helm-chart
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.22
+
+    - name: Run linters
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.0
+        golangci-lint run ./...
+
+    - name: Run tests and build binary
+      run: |
+        go test ./...
+        mkdir -p ./bin
+        go build -o ./bin/app ./cmd/main.go
+
+    - name: Set TAG output
+      id: set-tag
+      run: |
+        if [ "${{ inputs.environment }}" = "prod" ]; then
+          echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Build and push Docker image
+      run: |
+        echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+        docker build -t $REGISTRY/$IMAGE_NAME:${{ steps.set-tag.outputs.tag }} .
+        docker push $REGISTRY/$IMAGE_NAME:${{ steps.set-tag.outputs.tag }}
+
+  helm-release:
+    runs-on: ubuntu-latest
+    needs: [build]
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Configure Git
+      run: |
+        git config user.name "$GITHUB_ACTOR"
+        git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+
+    - name: Update Chart.yaml with new version
+      run: |
+        sed -i "s/^version:.*$/version: \"$TAG\"/" helm-chart/Chart.yaml
+        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" helm-chart/Chart.yaml
+
+  security:
+    runs-on: ubuntu-latest
+    needs: [build, helm-release]
+    env:
+      REGISTRY: docker.io
+      IMAGE_NAME: ${{ github.repository }}
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+    - name: Security scan with Trivy
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: $REGISTRY/$IMAGE_NAME:$TAG
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build, helm-release, security]
+    env:
+      CHART_DIR: ./helm-chart
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+    - name: Set up kubeconfig
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+
+    - name: Helm deploy
+      run: |
+        helm upgrade --install my-app $CHART_DIR \
+          --namespace ${{ inputs.environment }} \
+          --create-namespace \
+          --set image.tag=$TAG
+
+    - name: Healthcheck
+      run: |
+        sleep 10
+        curl -f http://my-app.${{ inputs.environment }}.svc.cluster.local/healthz
+
+  notify:
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [build, helm-release, security, deploy]
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+    - name: Notify on failure
+      run: |
+        curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+          -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+          -d text="❌ Deploy to *${{ inputs.environment }}* failed in ${{ github.repository }} on $TAG"

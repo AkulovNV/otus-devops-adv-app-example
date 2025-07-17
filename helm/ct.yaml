@@ -1,0 +1,5 @@
+remote: origin
+target-branch: master
+chart-dirs:
+  - helm
+validate-maintainers: false
