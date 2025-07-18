@@ -40,8 +40,9 @@ pipeline {
     stage('Lint and Test') {
       steps {
         sh '''
+          # Установка Golang и golangci-lint - так делать не надо, лучше использовать Docker образ с уже установленными зависимостями
           sudo apt update
-          sudo apt install -y golang        
+          sudo apt install -y golang
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.0
           which golangci-lint
           golangci-lint run ./...
