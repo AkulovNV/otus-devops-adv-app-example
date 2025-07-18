@@ -27,10 +27,10 @@ pipeline {
     stage('Setup Secrets') {
       steps {
         withCredentials([
-          string(credentialsId: 'yc-iam-token', variable: 'YC_IAM_TOKEN'),
-          string(credentialsId: 'yc-sa-key', variable: 'YC_SA_KEY_BASE64'),
-          string(credentialsId: 'yc-cloud-id', variable: 'YC_CLOUD_ID'),
-          string(credentialsId: 'yc-folder-id', variable: 'YC_FOLDER_ID')
+          string(credentialsId: 'YC_IAM_TOKEN', variable: 'YC_IAM_TOKEN'),
+          string(credentialsId: 'YC_SA_KEY_BASE64', variable: 'YC_SA_KEY_BASE64'),
+          string(credentialsId: 'YC_CLOUD_ID', variable: 'YC_CLOUD_ID'),
+          string(credentialsId: 'YC_FOLDER_ID', variable: 'YC_FOLDER_ID')
         ]) {
           sh 'echo "Secrets loaded successfully"'
         }
@@ -64,7 +64,7 @@ pipeline {
     stage('Docker Build & Push') {
       steps {
         withCredentials([
-          string(credentialsId: 'yc-iam-token', variable: 'YC_IAM_TOKEN')
+          string(credentialsId: 'YC_IAM_TOKEN', variable: 'YC_IAM_TOKEN')
         ]) {
           sh '''
             echo "$YC_IAM_TOKEN" | docker login -u iam --password-stdin $REGISTRY
@@ -102,9 +102,9 @@ pipeline {
     stage('Deploy to K8s') {
       steps {
         withCredentials([
-          string(credentialsId: 'yc-sa-key', variable: 'YC_SA_KEY_BASE64'),
-          string(credentialsId: 'yc-cloud-id', variable: 'YC_CLOUD_ID'),
-          string(credentialsId: 'yc-folder-id', variable: 'YC_FOLDER_ID')
+          string(credentialsId: 'YC_SA_KEY_BASE64', variable: 'YC_SA_KEY_BASE64'),
+          string(credentialsId: 'YC_CLOUD_ID', variable: 'YC_CLOUD_ID'),
+          string(credentialsId: 'YC_FOLDER_ID', variable: 'YC_FOLDER_ID')
         ]) {
           sh '''
             echo "$YC_SA_KEY_BASE64" | base64 -d > key.json
