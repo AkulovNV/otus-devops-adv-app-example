@@ -89,7 +89,7 @@ jobs:
     - name: Build and push multiarch image to YCR
       run: |
         docker buildx build \
-          --platform linux/amd64,linux/arm64 \
+          --platform linux/amd64 \
           --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache \
           --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache,mode=max \
           -t $REGISTRY/$IMAGE_NAME:$TAG \
@@ -99,7 +99,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, docker-build]
     env:
+      REGISTRY: ${{ inputs.registry }}
+      IMAGE_NAME: ${{ inputs.registry-path }}/${{ inputs.app-name }}/${{ inputs.environment }}
       TAG: ${{ needs.build.outputs.tag }}
+      CHART_PATH: ${{ inputs.helm-chart-path }}
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -117,13 +120,13 @@ jobs:
     - name: Update Chart.yaml with new version
       run: |
         echo "Version: $TAG"
-        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" ${{ inputs.helm-chart-path }}/Chart.yaml
-        sed -i "s/repository:.*$/repository: ${{ inputs.registry }}/${{ inputs.registry-path }}/${{ inputs.app-name }}/" ${{ inputs.helm-chart-path }}/values.yaml
-        sed -i "s/tag:.*$/tag: \"$TAG\"/" ${{ inputs.helm-chart-path }}/values.yaml
+        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" $CHART_PATH/Chart.yaml
+        sed -i "s/repository:.*$/repository: \"$REGISTRY/$IMAGE_NAME\"/" $CHART_PATH/values.yaml
+        sed -i "s/tag:.*$/tag: \"$TAG\"/" $CHART_PATH/values.yaml
 
     - name: Lint Helm chart
       run: |
-        helm lint ${{ inputs.helm-chart-path }}
+        helm lint $CHART_PATH
   security:
     runs-on: ubuntu-latest
     needs: [helm-release, build]
