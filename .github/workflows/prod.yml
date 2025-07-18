@@ -5,8 +5,9 @@ on:
     branches: [main]
 
 jobs:
-  call-deploy:
+  deploy:
     uses: ./.github/workflows/deploy.yml
     with:
       environment: prod
+      cluster-name: otus-test-cluster
     secrets: inherit

@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Обновления зависимостей Go (go.mod/go.sum)
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Обновления GitHub Actions (workflow uses)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "ci"
+      - "github-actions"
