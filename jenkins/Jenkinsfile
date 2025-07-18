@@ -40,7 +40,10 @@ pipeline {
     stage('Lint and Test') {
       steps {
         sh '''
+          sudo apt update
+          sudo apt install -y golang        
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.0
+          which golangci-lint
           golangci-lint run ./...
           go test ./...
           mkdir -p ./bin
