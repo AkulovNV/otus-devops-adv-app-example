@@ -164,7 +164,8 @@ jobs:
     - name: Configure yc and kubeconfig
       run: |
         export PATH="$HOME/yandex-cloud/bin:$PATH"
-
+        
+        yc config profile create otus
         yc config profile activate otus
         yc config set token ${{ secrets.YC_IAM_TOKEN }}
         yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
