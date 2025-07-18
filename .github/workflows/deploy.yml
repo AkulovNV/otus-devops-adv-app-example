@@ -168,7 +168,7 @@ jobs:
 
         yc config profile create otus
         yc config profile activate otus
-        yc auth activate-service-account --key key.json
+        yc config set service-account-key key.json
         # TOKEN=$(echo "${{ secrets.YC_IAM_TOKEN }}" | base64 --decode)
         # yc config set token $TOKEN
         yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
