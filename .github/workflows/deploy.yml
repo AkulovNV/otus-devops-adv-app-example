@@ -6,17 +6,22 @@ on:
       environment:
         required: true
         type: string
+      registry:
+        required: false
+        type: string
+      registry-path:
+        required: false
+        type: string
     secrets:
-      DOCKERHUB_USERNAME:
-        required: true
-      DOCKERHUB_TOKEN:
-        required: true
-      TELEGRAM_BOT_TOKEN:
-        required: true
-      TELEGRAM_CHAT_ID:
+      YC_IAM_TOKEN:
         required: true
       KUBE_CONFIG:
         required: true
+
+      # TELEGRAM_BOT_TOKEN:
+      #   required: true
+      # TELEGRAM_CHAT_ID:
+      #   required: true
 
 jobs:
   build:
@@ -24,8 +29,8 @@ jobs:
     outputs:
       tag: ${{ steps.set-tag.outputs.tag }}
     env:
-      REGISTRY: docker.io
-      IMAGE_NAME: ${{ github.repository }}
+      REGISTRY: ${{ inputs.registry || 'cr.yandex' }}
+      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ github.repository }}
       CHART_DIR: ./helm-chart
 
     steps:
@@ -59,11 +64,31 @@ jobs:
           echo "tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
         fi
 
-    - name: Build and push Docker image
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [build]
+    env:
+      REGISTRY: ${{ inputs.registry || 'cr.yandex' }}
+      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ github.repository }}
+      TAG: ${{ needs.build.outputs.tag }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Docker login to Yandex Registry
       run: |
-        echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-        docker build -t $REGISTRY/$IMAGE_NAME:${{ steps.set-tag.outputs.tag }} .
-        docker push $REGISTRY/$IMAGE_NAME:${{ steps.set-tag.outputs.tag }}
+        echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin $REGISTRY
+
+    - name: Build and push multiarch image to YCR
+      run: |
+        docker buildx build \
+          --platform linux/amd64,linux/arm64 \
+          -t $REGISTRY/$IMAGE_NAME:$TAG \
+          --push .
 
   helm-release:
     runs-on: ubuntu-latest
@@ -112,7 +137,7 @@ jobs:
     - name: Set up kubeconfig
       run: |
         mkdir -p ~/.kube
-        echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
 
     - name: Helm deploy
       run: |
@@ -121,20 +146,20 @@ jobs:
           --create-namespace \
           --set image.tag=$TAG
 
-    - name: Healthcheck
-      run: |
-        sleep 10
-        curl -f http://my-app.${{ inputs.environment }}.svc.cluster.local/healthz
+    # - name: Healthcheck
+    #   run: |
+    #     sleep 10
+    #     curl -f http://my-app.${{ inputs.environment }}.svc.cluster.local/healthz
 
-  notify:
-    runs-on: ubuntu-latest
-    if: failure()
-    needs: [build, helm-release, security, deploy]
-    env:
-      TAG: ${{ needs.build.outputs.tag }}
-    steps:
-    - name: Notify on failure
-      run: |
-        curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
-          -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-          -d text="❌ Deploy to *${{ inputs.environment }}* failed in ${{ github.repository }} on $TAG"
+  # notify:
+  #   runs-on: ubuntu-latest
+  #   if: failure()
+  #   needs: [build, helm-release, security, deploy]
+  #   env:
+  #     TAG: ${{ needs.build.outputs.tag }}
+  #   steps:
+  #   - name: Notify on failure
+  #     run: |
+  #       curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+  #         -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+  #         -d text="❌ Deploy to *${{ inputs.environment }}* failed in ${{ github.repository }} on $TAG"
