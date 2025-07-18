@@ -22,6 +22,9 @@ on:
         required: false
         type: string
         default: helm/app
+      cluster-name:
+        required: true
+        type: string
     secrets:
       YC_IAM_TOKEN:
         required: true
@@ -152,11 +155,28 @@ jobs:
     runs-on: ubuntu-latest
     # needs: [helm-release, security]
     steps:
-    - name: Set up kubeconfig
+    - name: Install Yandex CLI
       run: |
-        mkdir -p ~/.kube
-        echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
-        kubectl config get-contexts
+        curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+        export PATH="$HOME/yandex-cloud/bin:$PATH"
+        echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
+    - name: Configure yc and kubeconfig
+      run: |
+        export PATH="$HOME/yandex-cloud/bin:$PATH"
+
+        # Авторизация через IAM токен
+        yc config set token ${{ secrets.YC_IAM_TOKEN }}
+        yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+        yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+        yc config set profile otus
+
+        # Получение kubeconfig с exec-авторизацией
+        yc managed-kubernetes cluster get-credentials ${{ input.cluster-name }} \
+          --external \
+          --profile=otus \
+          --force
+        
         kubectl get po -A
 
     # - name: Helm deploy
