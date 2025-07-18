@@ -164,6 +164,7 @@ jobs:
     - name: Configure yc and kubeconfig
       run: |
         echo "${{ secrets.YC_IAM_TOKEN }}" | base64 -d > key.json
+        cat key.json
         export PATH="$HOME/yandex-cloud/bin:$PATH"
 
         yc config profile create otus
