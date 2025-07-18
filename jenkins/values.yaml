@@ -13,7 +13,6 @@ controller:
     - blueocean-rest-impl:1.27.21
     - blueocean-bitbucket-pipeline:1.27.21
     - blueocean-pipeline-api-impl:1.27.21
-    - git:5.7.0
     - github:1.43.0
     - matrix-auth:3.2.6
     - jdk-tool:83.v417146707a_3d
