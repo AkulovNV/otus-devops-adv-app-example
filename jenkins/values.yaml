@@ -3,13 +3,13 @@ controller:
     username: admin
     password: admin
   installPlugins:
-    - kubernetes:4324.vfec199a_33512
+    - kubernetes:4358.vcfd9c5a_0a_f51
     - workflow-job:1520.v56d65e3b_4566
     - workflow-basic-steps:1079.vce64b_a_929c5a_
     - docker-workflow:621.va_73f881d9232
     - docker-commons:457.v0f62a_94f11a_3
     - blueocean-web:1.27.21
-    - blueocean:1.27.17
+    - blueocean:1.27.21
     - blueocean-rest-impl:1.27.21
     - blueocean-bitbucket-pipeline:1.27.21
     - blueocean-pipeline-api-impl:1.27.21

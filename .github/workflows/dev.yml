@@ -3,6 +3,8 @@ name: Deploy Dev
 on:
   push:
     branches: [dev]
+    paths-ignore:
+      - 'jenkins/**'
 
 jobs:
   deploy:
