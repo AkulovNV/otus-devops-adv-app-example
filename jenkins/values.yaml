@@ -1,0 +1,65 @@
+controller:
+  admin:
+    username: admin
+    password: admin
+  installPlugins:
+    - kubernetes:4324.vfec199a_33512
+    - workflow-job:1520.v56d65e3b_4566
+    - workflow-basic-steps:1079.vce64b_a_929c5a_
+    - docker-workflow:621.va_73f881d9232
+    - docker-commons:457.v0f62a_94f11a_3
+    - blueocean-web:1.27.21
+    - blueocean:1.27.17
+    - blueocean-rest-impl:1.27.21
+    - blueocean-bitbucket-pipeline:1.27.21
+    - blueocean-pipeline-api-impl:1.27.21
+    - git:5.7.0
+    - github:1.43.0
+    - matrix-auth:3.2.6
+    - jdk-tool:83.v417146707a_3d
+    - cloudbees-disk-usage-simple:239.v6a_f1a_c1c8046
+
+
+  serviceType: ClusterIP
+
+  ingress:
+    enabled: false
+    hostName: jenkins.local
+    annotations:
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    tls:
+      - hosts:
+          - jenkins.local
+        secretName: jenkins-tls
+
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "1"
+      memory: "2Gi"
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: standard
+
+  agentListenerPort: 50000
+
+agent:
+  enabled: true
+  image:
+    registry: ""
+    repository: jenkins/inbound-agent
+    tag: 3324.vea_eda_e98cd69-1
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+
+rbac:
+  create: true
+  serviceAccount:
+    create: true
+    name: jenkins-sa

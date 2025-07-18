@@ -1,0 +1,148 @@
+pipeline {
+  agent any
+
+  environment {
+    REGISTRY = "cr.yandex"
+    REGISTRY_PATH = "crp8fh8qsgbjccrgdjdj"
+    APP_NAME = "myapp"
+    CHART_PATH = "helm/app"
+    ENVIRONMENT = "${params.ENVIRONMENT ?: 'dev'}"
+    CLUSTER_NAME = "${params.CLUSTER_NAME}"
+    TAG = ""
+  }
+
+  parameters {
+    string(name: 'ENVIRONMENT', defaultValue: 'dev', description: 'Deployment environment')
+    string(name: 'CLUSTER_NAME', description: 'Yandex K8s Cluster Name')
+  }
+
+  stages {
+
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Setup Secrets') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'yc-iam-token', variable: 'YC_IAM_TOKEN'),
+          string(credentialsId: 'yc-sa-key', variable: 'YC_SA_KEY_BASE64'),
+          string(credentialsId: 'yc-cloud-id', variable: 'YC_CLOUD_ID'),
+          string(credentialsId: 'yc-folder-id', variable: 'YC_FOLDER_ID')
+        ]) {
+          sh 'echo "Secrets loaded successfully"'
+        }
+      }
+    }
+
+    stage('Lint and Test') {
+      steps {
+        sh '''
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.0
+          golangci-lint run ./...
+          go test ./...
+          mkdir -p ./bin
+          go build -o ./bin/app ./cmd/main.go
+        '''
+      }
+    }
+
+    stage('Set TAG') {
+      steps {
+        script {
+          def tag = params.TAG?.trim()
+          if (!tag) {
+            tag = sh(script: "git describe --tags || git rev-parse --short HEAD", returnStdout: true).trim()
+          }
+          env.TAG = tag
+        }
+      }
+    }
+
+    stage('Docker Build & Push') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'yc-iam-token', variable: 'YC_IAM_TOKEN')
+        ]) {
+          sh '''
+            echo "$YC_IAM_TOKEN" | docker login -u iam --password-stdin $REGISTRY
+            IMAGE_NAME=$REGISTRY/$REGISTRY_PATH/$APP_NAME/$ENVIRONMENT
+            docker buildx create --use --name multiarch || true
+            docker buildx build --platform linux/amd64 \
+              --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache \
+              --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache,mode=max \
+              -t $REGISTRY/$IMAGE_NAME:$TAG --push .
+          '''
+        }
+      }
+    }
+
+    stage('Update Helm Chart') {
+      steps {
+        sh '''
+          sed -i "" "s/^appVersion:.*$/appVersion: \"$TAG\"/" $CHART_PATH/Chart.yaml
+          sed -i "" "s|repository:.*$|repository: \"$REGISTRY/$REGISTRY_PATH/$APP_NAME/$ENVIRONMENT\"|" $CHART_PATH/values.yaml
+          sed -i "" "s/tag:.*$/tag: \"$TAG\"/" $CHART_PATH/values.yaml
+          helm lint $CHART_PATH
+        '''
+      }
+    }
+
+    stage('Security Scan') {
+      steps {
+        sh '''
+          echo "$YC_IAM_TOKEN" | docker login -u iam --password-stdin $REGISTRY
+          trivy image $REGISTRY/$REGISTRY_PATH/$APP_NAME/$ENVIRONMENT:$TAG
+        '''
+      }
+    }
+
+    stage('Deploy to K8s') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'yc-sa-key', variable: 'YC_SA_KEY_BASE64'),
+          string(credentialsId: 'yc-cloud-id', variable: 'YC_CLOUD_ID'),
+          string(credentialsId: 'yc-folder-id', variable: 'YC_FOLDER_ID')
+        ]) {
+          sh '''
+            echo "$YC_SA_KEY_BASE64" | base64 -d > key.json
+
+            curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+            export PATH="$HOME/yandex-cloud/bin:$PATH"
+
+            yc config profile create otus
+            yc config profile activate otus
+            yc config set service-account-key key.json
+            yc config set cloud-id $YC_CLOUD_ID
+            yc config set folder-id $YC_FOLDER_ID
+
+            yc managed-kubernetes cluster get-credentials $CLUSTER_NAME --external --force
+
+            helm upgrade --install $APP_NAME $CHART_PATH \
+              --namespace $ENVIRONMENT --create-namespace \
+              --atomic --timeout 90s \
+              --set image.repository=$REGISTRY/$REGISTRY_PATH/$APP_NAME/$ENVIRONMENT \
+              --set image.tag=$TAG
+          '''
+        }
+      }
+    }
+
+    stage('Healthcheck') {
+      steps {
+        sh '''
+          kubectl rollout status deployment/$APP_NAME -n $ENVIRONMENT
+          kubectl wait --for=condition=available --timeout=60s deployment/$APP_NAME -n $ENVIRONMENT
+        '''
+      }
+    }
+  }
+  post {
+    failure {
+      echo '🚨 Deploy failed!'
+      // можно добавить уведомление Telegram или Slack
+    }
+  }
+}
