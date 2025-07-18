@@ -14,7 +14,7 @@ migration:
   enabled: false
 
 # migrationsImage:
-#   repository: 
+#   repository: ""
 #   pullPolicy: IfNotPresent
 #   # Overrides the image tag whose default is the chart appVersion.
 #   tag: ""

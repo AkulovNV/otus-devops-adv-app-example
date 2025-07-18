@@ -121,7 +121,7 @@ jobs:
       run: |
         echo "Version: $TAG"
         sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" $CHART_PATH/Chart.yaml
-        sed -i "s/repository:.*$/repository: \"$REGISTRY/$IMAGE_NAME\"/" $CHART_PATH/values.yaml
+        sed -i "s|repository:.*$|repository: \"$REGISTRY/$IMAGE_NAME\"|" "$CHART_PATH/values.yaml"
         sed -i "s/tag:.*$/tag: \"$TAG\"/" $CHART_PATH/values.yaml
 
     - name: Lint Helm chart
