@@ -172,7 +172,7 @@ jobs:
         yc config set profile otus
 
         # Получение kubeconfig с exec-авторизацией
-        yc managed-kubernetes cluster get-credentials ${{ input.cluster-name }} \
+        yc managed-kubernetes cluster get-credentials ${{ inputs.cluster-name }} \
           --external \
           --profile=otus \
           --force
