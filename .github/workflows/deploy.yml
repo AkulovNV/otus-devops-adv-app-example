@@ -48,23 +48,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-  #   - name: Set up Go
-  #     uses: actions/setup-go@v5
-  #     with:
-  #       go-version: 1.22
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.22
 
-  #   - name: Run linters
-  #     run: |
-  #       curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.0
-  #       golangci-lint run ./...
+    - name: Run linters
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.0
+        golangci-lint run ./...
 
-  #   - name: Run tests and build binary
-  #     run: |
-  #       # go mod tidy
-  #       # go get github.com/stretchr/testify
-  #       go test ./...
-  #       mkdir -p ./bin
-  #       go build -o ./bin/app ./cmd/main.go
+    - name: Run tests and build binary
+      run: |
+        # go mod tidy
+        # go get github.com/stretchr/testify
+        go test ./...
+        mkdir -p ./bin
+        go build -o ./bin/app ./cmd/main.go
 
     - name: Set TAG output
       id: set-tag
@@ -102,7 +102,6 @@ jobs:
 
   helm-release:
     runs-on: ubuntu-latest
-    # needs: [build, docker-build]
     needs: [build]
     env:
       REGISTRY: ${{ inputs.registry }}
@@ -115,8 +114,8 @@ jobs:
       with:
         fetch-depth: 0
 
-  #   - name: Install Helm
-  #     uses: azure/setup-helm@v4
+    - name: Install Helm
+      uses: azure/setup-helm@v4
 
     - name: Update Chart.yaml with new version
       run: |
@@ -130,7 +129,7 @@ jobs:
         helm lint $CHART_PATH
   security:
     runs-on: ubuntu-latest
-    needs: [helm-release, build]
+    needs: [build, docker-build]
     steps:
     - name: Set up variables
       id: vars
@@ -156,8 +155,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    # needs: [helm-release, security]
-    needs: [build,helm-release]
+    needs: [build, helm-release, security]
     env:
       REGISTRY: ${{ inputs.registry }}
       IMAGE_NAME: ${{ inputs.registry-path }}/${{ inputs.app-name }}/${{ inputs.environment }}
