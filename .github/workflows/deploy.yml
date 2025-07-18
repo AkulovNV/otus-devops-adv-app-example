@@ -30,6 +30,8 @@ on:
         required: true
       KUBE_CONFIG:
         required: true
+      YC_SA_KEY_BASE64:
+        required: true
 
       # TELEGRAM_BOT_TOKEN:
       #   required: true
@@ -163,15 +165,13 @@ jobs:
 
     - name: Configure yc and kubeconfig
       run: |
-        echo "${{ secrets.YC_IAM_TOKEN }}" | base64 -d > key.json
+        echo "${{ secrets.YC_SA_KEY_BASE64 }}" | base64 -d > key.json
         cat key.json
         export PATH="$HOME/yandex-cloud/bin:$PATH"
 
         yc config profile create otus
         yc config profile activate otus
         yc config set service-account-key key.json
-        # TOKEN=$(echo "${{ secrets.YC_IAM_TOKEN }}" | base64 --decode)
-        # yc config set token $TOKEN
         yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
         yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
 
