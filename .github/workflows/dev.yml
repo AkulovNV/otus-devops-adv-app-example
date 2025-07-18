@@ -5,7 +5,7 @@ on:
     branches: [dev]
 
 jobs:
-  call-deploy:
+  deploy:
     uses: ./.github/workflows/deploy.yml
     with:
       environment: dev

@@ -157,8 +157,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [helm-release, security]
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
     - name: Install Yandex CLI
       run: |
         curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
@@ -185,9 +183,10 @@ jobs:
 
     - name: Helm deploy
       run: |
+        cat ${{ inputs.helm-chart-path }}/Chart.yaml
         helm upgrade --install my-app ./${{ inputs.helm-chart-path }} \
           --namespace ${{ inputs.environment }} \
-          --create-namespace
+          --create-namespace --wait 
 
     # - name: Healthcheck
     #   run: |
