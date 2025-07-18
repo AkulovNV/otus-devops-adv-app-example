@@ -28,8 +28,6 @@ on:
     secrets:
       YC_IAM_TOKEN:
         required: true
-      KUBE_CONFIG:
-        required: true
       YC_SA_KEY_BASE64:
         required: true
 
