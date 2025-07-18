@@ -85,6 +85,8 @@ jobs:
       run: |
         docker buildx build \
           --platform linux/amd64,linux/arm64 \
+          --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache \
+          --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache,mode=max \
           -t $REGISTRY/$IMAGE_NAME:$TAG \
           --push .
 
