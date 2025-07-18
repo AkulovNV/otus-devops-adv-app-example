@@ -15,6 +15,10 @@ on:
       app-name:
         required: false
         type: string
+      helm-chart-path:
+        required: false
+        type: string
+        default: helm/app
     secrets:
       YC_IAM_TOKEN:
         required: true
@@ -31,8 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.set-tag.outputs.tag }}
-    env:
-      CHART_DIR: ./helm-chart
 
     steps:
     - name: Checkout code
@@ -111,28 +113,33 @@ jobs:
 
     - name: Update Chart.yaml with new version
       run: |
-        sed -i "s/^version:.*$/version: \"$TAG\"/" helm/app/Chart.yaml
-        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" helm/app/Chart.yaml
+        echo "Version: $TAG"
+        sed -i "s/^version:.*$/version: \"$TAG\"/" ${{ inputs.helm-chart-path }}/Chart.yaml
+        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" ${{ inputs.helm-chart-path }}/Chart.yaml
 
+    - name: Lint Helm chart
+      run: |
+        helm lint ${{ inputs.helm-chart-path }}
   security:
     runs-on: ubuntu-latest
-    needs: [helm-release]
-    env:
-      REGISTRY: ${{ inputs.registry || 'cr.yandex' }}
-      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ inputs.app-name || 'myapp' }}/${{ inputs.environment }}
-      TAG: ${{ needs.build.outputs.tag }}
+    needs: [helm-release, build]
     steps:
+    - name: Set up variables
+      id: vars
+      run: |
+        REGISTRY="${{ inputs.registry || 'cr.yandex' }}"
+        IMAGE_PATH="${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ inputs.app-name || 'myapp' }}/${{ inputs.environment }}"
+        TAG="${{ needs.build.outputs.tag }}"
+        echo "image_ref=$REGISTRY/$IMAGE_PATH:$TAG" >> $GITHUB_OUTPUT
+
     - name: Security scan with Trivy
       uses: aquasecurity/trivy-action@master
       with:
-        image-ref: $REGISTRY/$IMAGE_NAME:$TAG
+        image-ref: ${{ steps.vars.outputs.image_ref }}
 
   deploy:
     runs-on: ubuntu-latest
     needs: [helm-release, security]
-    env:
-      CHART_DIR: ./helm-chart
-      TAG: ${{ needs.build.outputs.tag }}
     steps:
     - name: Set up kubeconfig
       run: |
@@ -141,10 +148,9 @@ jobs:
 
     - name: Helm deploy
       run: |
-        helm upgrade --install my-app $CHART_DIR \
+        helm upgrade --install my-app ${{ inputs.helm-chart-path }} \
           --namespace ${{ inputs.environment }} \
-          --create-namespace \
-          --set image.tag=$TAG
+          --create-namespace 
 
     # - name: Healthcheck
     #   run: |
