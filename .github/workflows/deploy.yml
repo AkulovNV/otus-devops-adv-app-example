@@ -12,6 +12,9 @@ on:
       registry-path:
         required: false
         type: string
+      app-name:
+        required: false
+        type: string
     secrets:
       YC_IAM_TOKEN:
         required: true
@@ -56,18 +59,15 @@ jobs:
     - name: Set TAG output
       id: set-tag
       run: |
-        if [ "${{ inputs.environment }}" = "prod" ]; then
-          echo "tag=$(git describe --tags)" >> $GITHUB_OUTPUT
-        else
-          echo "tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
-        fi
+        TAG=$(git describe --tags 2>/dev/null || git rev-parse --short HEAD)
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
 
   docker-build:
     runs-on: ubuntu-latest
     needs: [build]
     env:
       REGISTRY: ${{ inputs.registry || 'cr.yandex' }}
-      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ inputs.environment }}
+      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ inputs.app-name || 'myapp' }}/${{ inputs.environment }}
       TAG: ${{ needs.build.outputs.tag }}
 
     steps:
@@ -109,15 +109,15 @@ jobs:
 
     - name: Update Chart.yaml with new version
       run: |
-        sed -i "s/^version:.*$/version: \"$TAG\"/" helm-chart/Chart.yaml
-        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" helm-chart/Chart.yaml
+        sed -i "s/^version:.*$/version: \"$TAG\"/" helm/app/Chart.yaml
+        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" helm/app/Chart.yaml
 
   security:
     runs-on: ubuntu-latest
     needs: [helm-release]
     env:
-      REGISTRY: docker.io
-      IMAGE_NAME: ${{ github.repository }}
+      REGISTRY: ${{ inputs.registry || 'cr.yandex' }}
+      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ inputs.app-name || 'myapp' }}/${{ inputs.environment }}
       TAG: ${{ needs.build.outputs.tag }}
     steps:
     - name: Security scan with Trivy
