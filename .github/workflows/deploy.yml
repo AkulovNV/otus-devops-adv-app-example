@@ -29,8 +29,6 @@ jobs:
     outputs:
       tag: ${{ steps.set-tag.outputs.tag }}
     env:
-      REGISTRY: ${{ inputs.registry || 'cr.yandex' }}
-      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ github.repository }}
       CHART_DIR: ./helm-chart
 
     steps:
@@ -59,7 +57,7 @@ jobs:
       id: set-tag
       run: |
         if [ "${{ inputs.environment }}" = "prod" ]; then
-          echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          echo "tag=$(git describe --tags)" >> $GITHUB_OUTPUT
         else
           echo "tag=${GITHUB_SHA::8}" >> $GITHUB_OUTPUT
         fi
@@ -69,7 +67,7 @@ jobs:
     needs: [build]
     env:
       REGISTRY: ${{ inputs.registry || 'cr.yandex' }}
-      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ github.repository }}
+      IMAGE_NAME: ${{ inputs.registry-path || 'crp8fh8qsgbjccrgdjdj' }}/${{ inputs.environment }}
       TAG: ${{ needs.build.outputs.tag }}
 
     steps:
@@ -92,7 +90,7 @@ jobs:
 
   helm-release:
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, docker-build]
     env:
       TAG: ${{ needs.build.outputs.tag }}
     steps:
@@ -116,7 +114,7 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
-    needs: [build, helm-release]
+    needs: [helm-release]
     env:
       REGISTRY: docker.io
       IMAGE_NAME: ${{ github.repository }}
@@ -129,7 +127,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [build, helm-release, security]
+    needs: [helm-release, security]
     env:
       CHART_DIR: ./helm-chart
       TAG: ${{ needs.build.outputs.tag }}
