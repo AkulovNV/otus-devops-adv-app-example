@@ -97,6 +97,16 @@ jobs:
       run: |
         docker buildx build \
           --platform linux/amd64 \
+          --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME/test-web-app:buildcache \
+          --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME/test-web-app:buildcache,mode=max \
+          -t $REGISTRY/$IMAGE_NAME/test-web-app:$TAG \
+          -t $REGISTRY/$IMAGE_NAME/test-web-app:latest \
+          --push .
+
+    - name: Build and push test-web-app
+      run: |
+        docker buildx build \
+          --platform linux/amd64 \
           --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache \
           --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache,mode=max \
           -t $REGISTRY/$IMAGE_NAME:$TAG \
