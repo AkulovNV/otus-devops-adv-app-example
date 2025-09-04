@@ -110,7 +110,7 @@ jobs:
           --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME/test-web-app:buildcache,mode=max \
           -t $REGISTRY/$IMAGE_NAME/test-web-app:$TAG \
           -t $REGISTRY/$IMAGE_NAME/test-web-app:latest \
-          --push .
+          --push ./test-web-app
 
   # helm-release:
   #   runs-on: ubuntu-latest
