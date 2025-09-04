@@ -50,23 +50,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: 1.22
+    # - name: Set up Go
+    #   uses: actions/setup-go@v5
+    #   with:
+    #     go-version: 1.22
 
-    - name: Run linters
-      run: |
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.0
-        golangci-lint run ./...
+    # - name: Run linters
+    #   run: |
+    #     curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.0
+    #     golangci-lint run ./...
 
-    - name: Run tests and build binary
-      run: |
-        # go mod tidy
-        # go get github.com/stretchr/testify
-        go test ./...
-        mkdir -p ./bin
-        go build -o ./bin/app ./cmd/main.go
+    # - name: Run tests and build binary
+    #   run: |
+    #     # go mod tidy
+    #     # go get github.com/stretchr/testify
+    #     go test ./...
+    #     mkdir -p ./bin
+    #     go build -o ./bin/app ./cmd/main.go
 
     - name: Set TAG output
       id: set-tag
@@ -93,7 +93,16 @@ jobs:
       run: |
         echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin $REGISTRY
 
-    - name: Build and push multiarch image to YCR
+    # - name: Build and push multiarch image to YCR
+    #   run: |
+    #     docker buildx build \
+    #       --platform linux/amd64 \
+    #       --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache \
+    #       --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache,mode=max \
+    #       -t $REGISTRY/$IMAGE_NAME:$TAG \
+    #       --push .
+
+    - name: Build and push test-web-app
       run: |
         docker buildx build \
           --platform linux/amd64 \
@@ -103,123 +112,114 @@ jobs:
           -t $REGISTRY/$IMAGE_NAME/test-web-app:latest \
           --push .
 
-    - name: Build and push test-web-app
-      run: |
-        docker buildx build \
-          --platform linux/amd64 \
-          --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache \
-          --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME:buildcache,mode=max \
-          -t $REGISTRY/$IMAGE_NAME:$TAG \
-          --push .
-
-  helm-release:
-    runs-on: ubuntu-latest
-    needs: [tests]
-    env:
-      REGISTRY: ${{ inputs.registry }}
-      IMAGE_NAME: ${{ inputs.registry-path }}/${{ inputs.app-name }}/${{ inputs.environment }}
-      TAG: ${{ needs.tests.outputs.tag }}
-      CHART_PATH: ${{ inputs.helm-chart-path }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Install Helm
-      uses: azure/setup-helm@v4
-
-    - name: Update Chart.yaml with new version
-      run: |
-        echo "Version: $TAG"
-        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" $CHART_PATH/Chart.yaml
-        sed -i "s|repository:.*$|repository: \"$REGISTRY/$IMAGE_NAME\"|" "$CHART_PATH/values.yaml"
-        sed -i "s/tag:.*$/tag: \"$TAG\"/" $CHART_PATH/values.yaml
-
-    - name: Lint Helm chart
-      run: |
-        helm lint $CHART_PATH
-  security:
-    runs-on: ubuntu-latest
-    needs: [tests, docker-build]
-    steps:
-    - name: Set up variables
-      id: vars
-      run: |
-        REGISTRY="${{ inputs.registry }}"
-        IMAGE_PATH="${{ inputs.registry-path }}/${{ inputs.app-name }}/${{ inputs.environment }}"
-        TAG="${{ needs.tests.outputs.tag }}"
-        echo "image_ref=$REGISTRY/$IMAGE_PATH:$TAG" >> $GITHUB_OUTPUT
-
-    - name: Login to Yandex Registry
-      run: |
-        echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin ${{ inputs.registry }}
-
-    - name: Security scan with Trivy
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ steps.vars.outputs.image_ref }}
-
-    - name: Security scan with Trivy
-      uses: aquasecurity/trivy-action@master
-      with:
-        image-ref: ${{ steps.vars.outputs.image_ref }}
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [tests, helm-release, security]
-    env:
-      REGISTRY: ${{ inputs.registry }}
-      IMAGE_NAME: ${{ inputs.registry-path }}/${{ inputs.app-name }}/${{ inputs.environment }}
-      TAG: ${{ needs.tests.outputs.tag }}
-      CHART_PATH: ${{ inputs.helm-chart-path }}
-      APP_NAME: ${{ inputs.app-name }}
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Install Yandex CLI
-      run: |
-        curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
-        export PATH="$HOME/yandex-cloud/bin:$PATH"
-        echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
-
-    - name: Configure yc and kubeconfig
-      run: |
-        echo "${{ secrets.YC_SA_KEY_BASE64 }}" | base64 -d > key.json
-        export PATH="$HOME/yandex-cloud/bin:$PATH"
-
-        yc config profile create otus
-        yc config profile activate otus
-        yc config set service-account-key key.json
-        yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
-        yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
-
-        # Получение kubeconfig с exec-авторизацией
-        yc managed-kubernetes cluster get-credentials ${{ inputs.cluster-name }} \
-          --external \
-          --force
-
-        kubectl get nodes
-
-    - name: Helm deploy
-      run: |
-        sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" $CHART_PATH/Chart.yaml
-        helm upgrade --install $APP_NAME ./$CHART_PATH \
-          --namespace ${{ inputs.environment }} \
-          --create-namespace --atomic --timeout 90s \
-          --set image.repository=$REGISTRY/$IMAGE_NAME \
-          --set image.tag=$TAG
-          
-  # post-deploy:
+  # helm-release:
   #   runs-on: ubuntu-latest
-  #   needs: [tests, helm-release, security, deploy]
+  #   needs: [tests]
+  #   env:
+  #     REGISTRY: ${{ inputs.registry }}
+  #     IMAGE_NAME: ${{ inputs.registry-path }}/${{ inputs.app-name }}/${{ inputs.environment }}
+  #     TAG: ${{ needs.tests.outputs.tag }}
+  #     CHART_PATH: ${{ inputs.helm-chart-path }}
   #   steps:
-    - name: Healthcheck
-      run: |
-        kubectl rollout status deployment/$APP_NAME -n ${{ inputs.environment }}
-        kubectl wait --for=condition=available --timeout=60s deployment/$APP_NAME -n ${{ inputs.environment }}
-        kubectl get pods -n ${{ inputs.environment }}
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+  #     with:
+  #       fetch-depth: 0
+
+  #   - name: Install Helm
+  #     uses: azure/setup-helm@v4
+
+  #   - name: Update Chart.yaml with new version
+  #     run: |
+  #       echo "Version: $TAG"
+  #       sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" $CHART_PATH/Chart.yaml
+  #       sed -i "s|repository:.*$|repository: \"$REGISTRY/$IMAGE_NAME\"|" "$CHART_PATH/values.yaml"
+  #       sed -i "s/tag:.*$/tag: \"$TAG\"/" $CHART_PATH/values.yaml
+
+  #   - name: Lint Helm chart
+  #     run: |
+  #       helm lint $CHART_PATH
+  # security:
+  #   runs-on: ubuntu-latest
+  #   needs: [tests, docker-build]
+  #   steps:
+  #   - name: Set up variables
+  #     id: vars
+  #     run: |
+  #       REGISTRY="${{ inputs.registry }}"
+  #       IMAGE_PATH="${{ inputs.registry-path }}/${{ inputs.app-name }}/${{ inputs.environment }}"
+  #       TAG="${{ needs.tests.outputs.tag }}"
+  #       echo "image_ref=$REGISTRY/$IMAGE_PATH:$TAG" >> $GITHUB_OUTPUT
+
+  #   - name: Login to Yandex Registry
+  #     run: |
+  #       echo "${{ secrets.YC_IAM_TOKEN }}" | docker login -u iam --password-stdin ${{ inputs.registry }}
+
+  #   - name: Security scan with Trivy
+  #     uses: aquasecurity/trivy-action@master
+  #     with:
+  #       image-ref: ${{ steps.vars.outputs.image_ref }}
+
+  #   - name: Security scan with Trivy
+  #     uses: aquasecurity/trivy-action@master
+  #     with:
+  #       image-ref: ${{ steps.vars.outputs.image_ref }}
+
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: [tests, helm-release, security]
+  #   env:
+  #     REGISTRY: ${{ inputs.registry }}
+  #     IMAGE_NAME: ${{ inputs.registry-path }}/${{ inputs.app-name }}/${{ inputs.environment }}
+  #     TAG: ${{ needs.tests.outputs.tag }}
+  #     CHART_PATH: ${{ inputs.helm-chart-path }}
+  #     APP_NAME: ${{ inputs.app-name }}
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v4
+
+  #   - name: Install Yandex CLI
+  #     run: |
+  #       curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash
+  #       export PATH="$HOME/yandex-cloud/bin:$PATH"
+  #       echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
+  #   - name: Configure yc and kubeconfig
+  #     run: |
+  #       echo "${{ secrets.YC_SA_KEY_BASE64 }}" | base64 -d > key.json
+  #       export PATH="$HOME/yandex-cloud/bin:$PATH"
+
+  #       yc config profile create otus
+  #       yc config profile activate otus
+  #       yc config set service-account-key key.json
+  #       yc config set cloud-id ${{ secrets.YC_CLOUD_ID }}
+  #       yc config set folder-id ${{ secrets.YC_FOLDER_ID }}
+
+  #       # Получение kubeconfig с exec-авторизацией
+  #       yc managed-kubernetes cluster get-credentials ${{ inputs.cluster-name }} \
+  #         --external \
+  #         --force
+
+  #       kubectl get nodes
+
+  #   - name: Helm deploy
+  #     run: |
+  #       sed -i "s/^appVersion:.*$/appVersion: \"$TAG\"/" $CHART_PATH/Chart.yaml
+  #       helm upgrade --install $APP_NAME ./$CHART_PATH \
+  #         --namespace ${{ inputs.environment }} \
+  #         --create-namespace --atomic --timeout 90s \
+  #         --set image.repository=$REGISTRY/$IMAGE_NAME \
+  #         --set image.tag=$TAG
+          
+  # # post-deploy:
+  # #   runs-on: ubuntu-latest
+  # #   needs: [tests, helm-release, security, deploy]
+  # #   steps:
+  #   - name: Healthcheck
+  #     run: |
+  #       kubectl rollout status deployment/$APP_NAME -n ${{ inputs.environment }}
+  #       kubectl wait --for=condition=available --timeout=60s deployment/$APP_NAME -n ${{ inputs.environment }}
+  #       kubectl get pods -n ${{ inputs.environment }}
 
   # notify:
   #   runs-on: ubuntu-latest
