@@ -106,11 +106,11 @@ jobs:
       run: |
         docker buildx build \
           --platform linux/amd64 \
-          --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME/test-web-app:buildcache \
-          --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME/test-web-app:buildcache,mode=max \
-          -t $REGISTRY/$IMAGE_NAME/test-web-app:$TAG \
-          -t $REGISTRY/$IMAGE_NAME/test-web-app:latest \
-          --push ./test-web-app
+          --cache-from=type=registry,ref=$REGISTRY/$IMAGE_NAME/demo-app-logs:buildcache \
+          --cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME/demo-app-logs:buildcache,mode=max \
+          -t $REGISTRY/$IMAGE_NAME/demo-app-logs:$TAG \
+          -t $REGISTRY/$IMAGE_NAME/demo-app-logs:latest \
+          --push ./demo-app-logs
 
   # helm-release:
   #   runs-on: ubuntu-latest
