@@ -96,7 +96,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	traceID := generateTraceID()
 
-	duration := simulateWork(10, 50)
+	simulateWork(10, 50)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -120,7 +120,6 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 
 // Users endpoint with various response scenarios
 func usersHandler(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
 	traceID := generateTraceID()
 	userID := r.URL.Query().Get("user_id")
 
@@ -130,10 +129,11 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 	var message string
 	var errorMsg string
 	var responseData ResponseData
+	var duration time.Duration
 
 	switch {
 	case scenario < 70: // 70% success
-		duration := simulateWork(50, 200)
+		duration = simulateWork(50, 200)
 		statusCode = http.StatusOK
 		message = "Users retrieved successfully"
 		responseData = ResponseData{
@@ -148,7 +148,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 	case scenario < 85: // 15% client errors
-		duration := simulateWork(20, 100)
+		duration = simulateWork(20, 100)
 		statusCode = http.StatusBadRequest
 		message = "Invalid user request"
 		errorMsg = "Missing required parameter"
@@ -157,7 +157,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 			Timestamp: time.Now(),
 		}
 	case scenario < 95: // 10% not found
-		duration := simulateWork(30, 80)
+		duration = simulateWork(30, 80)
 		statusCode = http.StatusNotFound
 		message = "User not found"
 		errorMsg = fmt.Sprintf("User %s not found in database", userID)
@@ -166,7 +166,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 			Timestamp: time.Now(),
 		}
 	default: // 5% server errors
-		duration := simulateWork(200, 1000)
+		duration = simulateWork(200, 1000)
 		statusCode = http.StatusInternalServerError
 		message = "Database connection failed"
 		errorMsg = "Connection timeout to database after 5 seconds"
@@ -181,7 +181,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(responseData)
 
 	logRequest(r.Method, r.URL.Path, statusCode,
-		float64(time.Since(start).Nanoseconds())/1e6,
+float64(duration.Milliseconds()),
 		userID, message, traceID, errorMsg)
 }
 
