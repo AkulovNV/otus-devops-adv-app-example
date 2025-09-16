@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type LogEntry struct {
@@ -39,6 +42,39 @@ var (
 	serviceName = getEnv("SERVICE_NAME", "demo-api")
 	environment = getEnv("ENVIRONMENT", "development")
 	version     = getEnv("VERSION", "1.0.0")
+
+	// Prometheus metrics
+	requestTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total number of HTTP requests",
+		},
+		[]string{"method", "endpoint", "status_code", "service"},
+	)
+
+	requestDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "HTTP request duration in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "endpoint", "status_code", "service"},
+	)
+
+	activeConnections = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "http_active_connections",
+			Help: "Number of active HTTP connections",
+		},
+	)
+
+	errorRate = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_errors_total",
+			Help: "Total number of HTTP errors",
+		},
+		[]string{"method", "endpoint", "status_code", "service"},
+	)
 )
 
 func getEnv(key, defaultValue string) string {
@@ -83,6 +119,46 @@ func getLogLevel(statusCode int) string {
 	default:
 		return "debug"
 	}
+}
+
+// metricsMiddleware отслеживает метрики для каждого запроса
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		activeConnections.Inc()
+		defer activeConnections.Dec()
+
+		// Создаем wrapper для ResponseWriter чтобы захватить status code
+		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		// Выполняем следующий обработчик
+		next.ServeHTTP(wrapped, r)
+
+		// Записываем метрики
+		duration := time.Since(start).Seconds()
+		statusStr := fmt.Sprintf("%d", wrapped.statusCode)
+		endpoint := r.URL.Path
+
+		// Обновляем метрики
+		requestTotal.WithLabelValues(r.Method, endpoint, statusStr, serviceName).Inc()
+		requestDuration.WithLabelValues(r.Method, endpoint, statusStr, serviceName).Observe(duration)
+
+		// Отслеживаем ошибки
+		if wrapped.statusCode >= 400 {
+			errorRate.WithLabelValues(r.Method, endpoint, statusStr, serviceName).Inc()
+		}
+	})
+}
+
+// responseWriter wrapper для захвата status code
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
 }
 
 func simulateWork(minMs, maxMs int) time.Duration {
@@ -181,7 +257,7 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(responseData)
 
 	logRequest(r.Method, r.URL.Path, statusCode,
-float64(duration.Milliseconds()),
+		float64(duration.Milliseconds()),
 		userID, message, traceID, errorMsg)
 }
 
@@ -323,6 +399,9 @@ func main() {
 
 	r := mux.NewRouter()
 
+	// Метрики endpoint
+	r.Handle("/metrics", promhttp.Handler())
+
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
 	api.HandleFunc("/health", healthHandler).Methods("GET")
@@ -330,8 +409,11 @@ func main() {
 	api.HandleFunc("/orders", ordersHandler).Methods("GET", "POST")
 	api.HandleFunc("/load", loadHandler).Methods("GET")
 
-	// Root endpoint
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// Применяем metrics middleware к API routes
+	api.Use(metricsMiddleware)
+
+	// Root endpoint с middleware
+	r.Handle("/", metricsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := ResponseData{
 			Message:   "Demo API for Loki logging",
 			Timestamp: time.Now(),
@@ -352,7 +434,7 @@ func main() {
 		json.NewEncoder(w).Encode(response)
 
 		logRequest(r.Method, r.URL.Path, http.StatusOK, 10, "", "Root endpoint accessed", generateTraceID(), "")
-	})
+	})))
 
 	port := getEnv("PORT", "8080")
 
